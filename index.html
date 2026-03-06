@@ -15,7 +15,6 @@
       --border: #2a2d3a;
       --text: #e8eaf0;
       --muted: #7a7e94;
-      --pulse: rgba(244,131,31,0.4);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -34,11 +33,11 @@
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 20px;
-      height: 56px;
+      padding: 0 16px;
+      height: 52px;
       display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 16px;
       flex-shrink: 0;
       z-index: 1000;
     }
@@ -46,38 +45,39 @@
     .logo {
       font-family: 'Barlow Condensed', sans-serif;
       font-weight: 800;
-      font-size: 22px;
+      font-size: 20px;
       letter-spacing: 0.05em;
       color: var(--text);
       text-transform: uppercase;
+      white-space: nowrap;
     }
     .logo span { color: var(--r21); }
 
     .route-badges {
       display: flex;
-      gap: 8px;
-      margin-left: 4px;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+      min-width: 0;
     }
     .badge {
       font-family: 'Barlow Condensed', sans-serif;
       font-weight: 700;
-      font-size: 14px;
-      padding: 3px 10px;
+      font-size: 13px;
+      padding: 2px 8px;
       border-radius: 3px;
       letter-spacing: 0.08em;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      white-space: nowrap;
     }
-    .badge-21 { background: var(--r21); color: #fff; }
-    .badge-42 { background: var(--r42); color: #fff; }
     .badge .dot {
-      width: 7px; height: 7px;
+      width: 6px; height: 6px;
       border-radius: 50%;
       background: rgba(255,255,255,0.5);
       animation: pulse-dot 2s infinite;
     }
-
     @keyframes pulse-dot {
       0%, 100% { opacity: 0.5; transform: scale(1); }
       50% { opacity: 1; transform: scale(1.4); }
@@ -87,11 +87,12 @@
       margin-left: auto;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
+      flex-shrink: 0;
     }
 
     .status {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.1em;
@@ -99,7 +100,7 @@
     .status.live { color: #4ade80; }
     .status.live::before {
       content: '●';
-      margin-right: 5px;
+      margin-right: 4px;
       animation: blink 1.5s infinite;
     }
     @keyframes blink {
@@ -107,20 +108,112 @@
       50% { opacity: 0.3; }
     }
 
-    .count-chips {
+    /* ── TOOLBAR ── */
+    .toolbar {
+      background: #13161f;
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      height: 40px;
       display: flex;
-      gap: 6px;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 999;
     }
-    .chip {
-      font-size: 11px;
+
+    .toolbar-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    .dir-filters {
+      display: flex;
+      gap: 4px;
+    }
+    .dir-btn {
       font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
       font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 2px;
       letter-spacing: 0.06em;
+      padding: 3px 9px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s;
+      text-transform: uppercase;
     }
-    .chip-21 { border: 1px solid var(--r21); color: var(--r21); }
-    .chip-42 { border: 1px solid var(--r42); color: var(--r42); }
+    .dir-btn:hover { border-color: var(--text); color: var(--text); }
+    .dir-btn.active { background: var(--r21); border-color: var(--r21); color: #fff; }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    .toggle-btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 3px 9px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .toggle-btn:hover { border-color: var(--text); color: var(--text); }
+    .toggle-btn.active { background: #1e3a2a; border-color: #4ade80; color: #4ade80; }
+
+    /* Add route form */
+    .add-route-form {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .add-route-input {
+      width: 52px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 3px 7px;
+      text-align: center;
+      border-radius: 2px;
+      outline: none;
+      text-transform: uppercase;
+    }
+    .add-route-input:focus { border-color: var(--r21); }
+    .add-route-input::placeholder { color: var(--muted); font-weight: 400; letter-spacing: 0; }
+    .add-route-btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      background: var(--r21);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: opacity 0.15s;
+      text-transform: uppercase;
+    }
+    .add-route-btn:hover { opacity: 0.85; }
 
     /* ── MAP ── */
     #map {
@@ -130,12 +223,12 @@
 
     /* ── FOOTER BAR ── */
     .footer {
-      height: 34px;
+      height: 32px;
       background: var(--surface);
       border-top: 1px solid var(--border);
       display: flex;
       align-items: center;
-      padding: 0 20px;
+      padding: 0 16px;
       gap: 20px;
       flex-shrink: 0;
     }
@@ -147,26 +240,33 @@
     }
     .footer-item strong { color: var(--text); }
 
-    /* ── LOCATION BTN ── */
-    .locate-btn {
+    /* ── MAP BUTTONS ── */
+    .map-btns {
       position: absolute;
-      bottom: 52px;
+      bottom: 50px;
       right: 12px;
       z-index: 999;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .map-btn {
       background: var(--surface);
       border: 1px solid var(--border);
       color: var(--text);
       font-family: 'Barlow Condensed', sans-serif;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       letter-spacing: 0.08em;
-      padding: 8px 14px;
+      padding: 7px 12px;
       cursor: pointer;
       transition: all 0.2s;
       text-transform: uppercase;
+      white-space: nowrap;
+      border-radius: 2px;
     }
-    .locate-btn:hover { background: var(--border); border-color: var(--r21); color: var(--r21); }
-    .locate-btn.active { border-color: #4ade80; color: #4ade80; }
+    .map-btn:hover { background: var(--border); border-color: var(--r21); color: var(--r21); }
+    .map-btn.active { border-color: #4ade80; color: #4ade80; }
 
     /* ── LEAFLET POPUP OVERRIDE ── */
     .leaflet-popup-content-wrapper {
@@ -190,9 +290,7 @@
     }
     .leaflet-popup-close-button:hover { color: var(--text) !important; }
 
-    .popup-inner {
-      padding: 14px 16px 16px;
-    }
+    .popup-inner { padding: 14px 16px 16px; }
     .popup-route {
       font-family: 'Barlow Condensed', sans-serif;
       font-weight: 800;
@@ -204,120 +302,118 @@
       align-items: center;
       gap: 6px;
     }
-    .popup-route-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
+    .popup-route-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .popup-dir {
       font-family: 'Barlow Condensed', sans-serif;
       font-size: 20px;
       font-weight: 700;
       margin-bottom: 4px;
     }
-    .popup-dest {
-      font-size: 11px;
-      color: var(--muted);
-      margin-bottom: 12px;
-      letter-spacing: 0.05em;
-    }
-    .popup-divider {
-      height: 1px;
-      background: var(--border);
-      margin: 10px 0;
-    }
-    .popup-eta {
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 4px;
-    }
-    .popup-eta-val {
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 24px;
-      font-weight: 700;
-    }
-    .popup-stop-name {
-      font-size: 10px;
-      color: var(--muted);
-      margin-top: 2px;
-      letter-spacing: 0.04em;
-    }
-    .popup-no-location {
-      font-size: 11px;
-      color: var(--muted);
-      font-style: italic;
-    }
-    .popup-vehicle {
-      font-size: 10px;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-      margin-top: 10px;
-    }
+    .popup-dest { font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.05em; }
+    .popup-age { font-size: 10px; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.04em; }
+    .popup-stale { font-size: 10px; color: #f87171; margin-bottom: 8px; letter-spacing: 0.04em; }
+    .popup-divider { height: 1px; background: var(--border); margin: 10px 0; }
+    .popup-eta { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+    .popup-eta-val { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 700; }
+    .popup-stop-name { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.04em; }
+    .popup-no-location { font-size: 11px; color: var(--muted); font-style: italic; }
+    .popup-vehicle { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; margin-top: 10px; }
+
+    /* Stop popup */
+    .stop-popup { padding: 8px 12px; font-size: 11px; min-width: 140px; }
+    .stop-popup strong { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; display: block; margin-bottom: 2px; }
+    .stop-popup span { color: var(--muted); font-size: 10px; letter-spacing: 0.06em; }
   </style>
 </head>
 <body>
 
 <header>
   <div class="logo">SEPTA<span>•</span>LIVE</div>
-  <div class="route-badges">
-    <div class="badge badge-21"><div class="dot"></div> ROUTE 21</div>
-    <div class="badge badge-42"><div class="dot"></div> ROUTE 42</div>
+  <div class="route-badges" id="routeBadges">
+    <!-- badges rendered by JS -->
   </div>
   <div class="header-right">
-    <div class="count-chips">
-      <div class="chip chip-21" id="count21">21: —</div>
-      <div class="chip chip-42" id="count42">42: —</div>
-    </div>
     <div class="status" id="liveStatus">CONNECTING</div>
   </div>
 </header>
 
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <span class="toolbar-label">Direction</span>
+  <div class="dir-filters" id="dirFilters">
+    <button class="dir-btn active" data-dir="ALL" onclick="setDirFilter('ALL')">All</button>
+    <button class="dir-btn" data-dir="Eastbound" onclick="setDirFilter('Eastbound')">East</button>
+    <button class="dir-btn" data-dir="Westbound" onclick="setDirFilter('Westbound')">West</button>
+    <button class="dir-btn" data-dir="Northbound" onclick="setDirFilter('Northbound')">North</button>
+    <button class="dir-btn" data-dir="Southbound" onclick="setDirFilter('Southbound')">South</button>
+    <button class="dir-btn" data-dir="Inbound" onclick="setDirFilter('Inbound')">Inbound</button>
+    <button class="dir-btn" data-dir="Outbound" onclick="setDirFilter('Outbound')">Outbound</button>
+  </div>
+  <div class="toolbar-divider"></div>
+  <button class="toggle-btn" id="stopsToggle" onclick="toggleStops()">⬡ Stops</button>
+  <div class="add-route-form">
+    <span class="toolbar-label">+ Route</span>
+    <input class="add-route-input" id="addRouteInput" type="text" maxlength="4" placeholder="e.g. 64"
+      onkeydown="if(event.key==='Enter') addRoute()" />
+    <button class="add-route-btn" onclick="addRoute()">Add</button>
+  </div>
+</div>
+
 <div id="map"></div>
-<button class="locate-btn" id="locateBtn" onclick="locateMe()">⊙ My Location</button>
+
+<div class="map-btns">
+  <button class="map-btn" id="locateBtn" onclick="locateMe()">⊙ My Location</button>
+  <button class="map-btn" id="zoomMeBtn" onclick="zoomToMe()" style="display:none">⊕ Zoom to Me</button>
+</div>
 
 <div class="footer">
   <div class="footer-item">Refreshes every <strong>15s</strong></div>
   <div class="footer-item">Updated: <strong id="lastUpdate">—</strong></div>
-  <div class="footer-item">Data: <strong>SEPTA TransitView</strong></div>
+  <div class="footer-item" id="busCountFooter"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   // ── CONFIG ──────────────────────────────────────────────
-  const ROUTES = { '21': '#F4831F', '42': '#0076BE' };
   const REFRESH_MS = 15000;
   const AVG_BUS_MPH = 12;
+  const EXTRA_COLORS = ['#a855f7','#10b981','#ef4444','#f59e0b','#ec4899','#14b8a6','#8b5cf6'];
+  let colorIdx = 0;
+
+  // Routes: always-on + session additions
+  let ROUTES = { '21': '#F4831F', '42': '#0076BE' };
 
   // ── MAP SETUP ───────────────────────────────────────────
   const map = L.map('map', { zoomControl: false }).setView([39.952, -75.163], 13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors', maxZoom: 19,
   }).addTo(map);
   L.control.zoom({ position: 'topright' }).addTo(map);
 
   // ── STATE ────────────────────────────────────────────────
-  let busMarkers = {};     // vehicleId → L.marker
-  let userLocation = null; // { lat, lng }
+  let busMarkers = {};       // id → L.marker
+  let stopMarkers = {};      // routeNum → [L.circleMarker]
+  let stopsData = {};        // routeNum → [{lat,lng,stopname,stopid}]
+  let nearestStops = {};     // routeNum → {stop, distKm}
+  let userLocation = null;
   let userMarker = null;
-  let stopsData = {};      // routeNum → [{lat, lng, stopname, stopid}]
-  let nearestStops = {};   // routeNum → {stop, index}
+  let showStops = false;
+  let dirFilter = 'ALL';
+  let busLastPos = {};       // id → {lat, lng}
+  let busStaleCount = {};    // id → number of cycles unchanged
+  let busFirstSeen = {};     // id → timestamp
 
   // ── HELPERS ─────────────────────────────────────────────
   function haversineKm(lat1, lng1, lat2, lng2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
   function kmToMins(km) {
-    const mph = AVG_BUS_MPH;
-    const miles = km * 0.621371;
-    return Math.round((miles / mph) * 60);
+    return Math.round((km * 0.621371 / AVG_BUS_MPH) * 60);
   }
 
   function formatDir(raw) {
@@ -325,53 +421,74 @@
     const r = String(raw).trim().toUpperCase();
     if (r === '0' || r === 'INBOUND' || r === 'IB') return 'Inbound';
     if (r === '1' || r === 'OUTBOUND' || r === 'OB') return 'Outbound';
-    const map = { N: 'Northbound', S: 'Southbound', E: 'Eastbound', W: 'Westbound',
-                  NORTH: 'Northbound', SOUTH: 'Southbound', EAST: 'Eastbound', WEST: 'Westbound' };
-    return map[r] || r.charAt(0) + r.slice(1).toLowerCase();
+    const m = { N:'Northbound', S:'Southbound', E:'Eastbound', W:'Westbound',
+                NORTH:'Northbound', SOUTH:'Southbound', EAST:'Eastbound', WEST:'Westbound' };
+    return m[r] || r.charAt(0) + r.slice(1).toLowerCase();
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return '—';
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${s % 60}s ago`;
   }
 
   function now() {
-    return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
   }
 
-  // ── BUS MARKER SVG ──────────────────────────────────────
-  function makeBusIcon(route, heading) {
-    const color = ROUTES[route];
+  // ── ROUTE BADGES ─────────────────────────────────────────
+  function renderBadges() {
+    const el = document.getElementById('routeBadges');
+    el.innerHTML = Object.entries(ROUTES).map(([r, color]) => `
+      <div class="badge" style="background:${color};color:#fff">
+        <div class="dot"></div>
+        ROUTE ${r}
+        <span id="count${r}" style="opacity:0.75;font-weight:400">—</span>
+        ${!['21','42'].includes(r) ? `<span onclick="removeRoute('${r}')" style="cursor:pointer;opacity:0.7;margin-left:2px">✕</span>` : ''}
+      </div>`).join('');
+  }
+
+  // ── BUS ICON SVG ─────────────────────────────────────────
+  function makeBusIcon(route, heading, stale) {
+    const color = ROUTES[route] || '#888';
     const angle = heading || 0;
+    const opacity = stale ? 0.35 : 1;
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44" opacity="${opacity}">
         <g transform="translate(18,18) rotate(${angle}) translate(-18,-18)">
           <polygon points="18,2 26,14 10,14" fill="${color}" opacity="0.9"/>
         </g>
         <circle cx="18" cy="22" r="13" fill="${color}" stroke="#0f1117" stroke-width="2.5"/>
         <text x="18" y="27" font-family="Barlow Condensed,sans-serif" font-weight="800"
               font-size="13" fill="white" text-anchor="middle">${route}</text>
+        ${stale ? `<circle cx="28" cy="10" r="5" fill="#f87171" stroke="#0f1117" stroke-width="1.5"/>` : ''}
       </svg>`;
-    return L.divIcon({
-      html: svg,
-      className: '',
-      iconSize: [36, 44],
-      iconAnchor: [18, 22],
-      popupAnchor: [0, -24],
-    });
+    return L.divIcon({ html: svg, className: '', iconSize: [36,44], iconAnchor: [18,22], popupAnchor: [0,-24] });
   }
 
-  // ── POPUP CONTENT ────────────────────────────────────────
-  function buildPopup(bus, route) {
-    const color = ROUTES[route];
+  // ── POPUP ────────────────────────────────────────────────
+  function buildPopup(bus, route, id) {
+    const color = ROUTES[route] || '#888';
     const dir = formatDir(bus.Direction || bus.direction);
     const dest = bus.destination || bus.Destination || '';
+    const stale = (busStaleCount[id] || 0) >= 2;
+    const firstSeen = busFirstSeen[id];
+    const ageStr = firstSeen ? timeAgo(firstSeen) : '—';
+
+    let statusHtml = '';
+    if (stale) {
+      statusHtml = `<div class="popup-stale">⚠ Position unchanged for ${busStaleCount[id]} cycles</div>`;
+    } else {
+      statusHtml = `<div class="popup-age">Position updated ${ageStr}</div>`;
+    }
 
     let etaHtml = '';
     if (userLocation && nearestStops[route]) {
       const ns = nearestStops[route];
-      const busLat = parseFloat(bus.lat);
-      const busLng = parseFloat(bus.lng);
-      const stopLat = parseFloat(ns.stop.lat);
-      const stopLng = parseFloat(ns.stop.lng);
-      const distKm = haversineKm(busLat, busLng, stopLat, stopLng);
+      const distKm = haversineKm(parseFloat(bus.lat), parseFloat(bus.lng), parseFloat(ns.stop.lat), parseFloat(ns.stop.lng));
       const mins = kmToMins(distKm);
-
       const distMi = (distKm * 0.621371).toFixed(1);
       etaHtml = `
         <div class="popup-divider"></div>
@@ -392,22 +509,78 @@
         </div>
         <div class="popup-dir" style="color:${color}">${dir}</div>
         ${dest ? `<div class="popup-dest">→ ${dest}</div>` : ''}
+        ${statusHtml}
         ${etaHtml}
         <div class="popup-vehicle">Vehicle #${bus.label || bus.VehicleID || '—'}</div>
       </div>`;
   }
 
-  // ── FETCH BUSES ─────────────────────────────────────────
+  // ── DIRECTION FILTER ─────────────────────────────────────
+  function setDirFilter(dir) {
+    dirFilter = dir;
+    document.querySelectorAll('.dir-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.dir === dir);
+    });
+    applyFilters();
+  }
+
+  function applyFilters() {
+    for (const [id, marker] of Object.entries(busMarkers)) {
+      const bus = marker._busData;
+      const dir = formatDir(bus?.Direction || bus?.direction);
+      const show = dirFilter === 'ALL' || dir === dirFilter;
+      if (show) {
+        if (!map.hasLayer(marker)) marker.addTo(map);
+      } else {
+        if (map.hasLayer(marker)) map.removeLayer(marker);
+      }
+    }
+  }
+
+  // ── STOP MARKERS ─────────────────────────────────────────
+  function toggleStops() {
+    showStops = !showStops;
+    document.getElementById('stopsToggle').classList.toggle('active', showStops);
+    for (const route of Object.keys(ROUTES)) {
+      renderStopMarkers(route);
+    }
+  }
+
+  function renderStopMarkers(route) {
+    // Remove existing stop markers for this route
+    if (stopMarkers[route]) {
+      stopMarkers[route].forEach(m => map.removeLayer(m));
+      stopMarkers[route] = [];
+    }
+    if (!showStops || !stopsData[route]) return;
+    const color = ROUTES[route] || '#888';
+    stopMarkers[route] = stopsData[route].map(stop => {
+      const lat = parseFloat(stop.lat);
+      const lng = parseFloat(stop.lng);
+      if (isNaN(lat) || isNaN(lng)) return null;
+      return L.circleMarker([lat, lng], {
+        radius: 4,
+        fillColor: color,
+        fillOpacity: 0.7,
+        color: '#0f1117',
+        weight: 1,
+      }).addTo(map).bindPopup(`
+        <div class="stop-popup">
+          <strong>${stop.stopname || 'Stop'}</strong>
+          <span>ROUTE ${route} · STOP #${stop.stopid || '—'}</span>
+        </div>`, { maxWidth: 200 });
+    }).filter(Boolean);
+  }
+
+  // ── FETCH ─────────────────────────────────────────────────
   async function fetchBuses(route) {
     const res = await fetch(`/api/septa?type=buses&route=${route}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    // API returns { bus: [...] } or array directly
-    const buses = data.bus || data[`route`] || data || [];
+    const buses = data.bus || data.route || data || [];
     return Array.isArray(buses) ? buses : Object.values(buses);
   }
 
-  // ── FETCH STOPS ──────────────────────────────────────────
   async function fetchStops(route) {
     const res = await fetch(`/api/septa?type=stops&route=${route}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -418,84 +591,130 @@
   // ── UPDATE MAP ───────────────────────────────────────────
   async function updateBuses() {
     const seenIds = new Set();
+    let totalCount = 0;
 
     for (const route of Object.keys(ROUTES)) {
       try {
         const buses = await fetchBuses(route);
-        document.getElementById(`count${route}`).textContent = `${route}: ${buses.length}`;
+        const countEl = document.getElementById(`count${route}`);
+        if (countEl) countEl.textContent = buses.length;
+        totalCount += buses.length;
 
         for (const bus of buses) {
           const lat = parseFloat(bus.lat);
           const lng = parseFloat(bus.lng);
           if (isNaN(lat) || isNaN(lng)) continue;
 
-          const id = `${route}-${bus.label || bus.VehicleID || Math.random()}`;
+          const id = `${route}-${bus.label || bus.VehicleID || (lat+','+lng)}`;
           seenIds.add(id);
 
-          const icon = makeBusIcon(route, parseInt(bus.heading) || 0);
-          const popupContent = buildPopup(bus, route);
+          // Stale detection
+          const prev = busLastPos[id];
+          if (prev && Math.abs(prev.lat - lat) < 0.00001 && Math.abs(prev.lng - lng) < 0.00001) {
+            busStaleCount[id] = (busStaleCount[id] || 0) + 1;
+          } else {
+            busStaleCount[id] = 0;
+            busFirstSeen[id] = Date.now();
+          }
+          busLastPos[id] = { lat, lng };
+
+          const stale = (busStaleCount[id] || 0) >= 2;
+          const icon = makeBusIcon(route, parseInt(bus.heading) || 0, stale);
+          const popupContent = buildPopup(bus, route, id);
 
           if (busMarkers[id]) {
             busMarkers[id].setLatLng([lat, lng]);
             busMarkers[id].setIcon(icon);
-            if (busMarkers[id].isPopupOpen()) {
-              busMarkers[id].setPopupContent(popupContent);
-            }
+            if (busMarkers[id].isPopupOpen()) busMarkers[id].setPopupContent(popupContent);
           } else {
             const marker = L.marker([lat, lng], { icon })
-              .addTo(map)
               .bindPopup(popupContent, { maxWidth: 260 });
             busMarkers[id] = marker;
           }
-          // store bus data on marker for popup rebuild
           busMarkers[id]._busData = bus;
           busMarkers[id]._route = route;
+          busMarkers[id]._id = id;
         }
       } catch (e) {
         console.warn(`Route ${route} fetch failed:`, e);
       }
     }
 
-    // Remove stale markers
+    // Remove buses that disappeared
     for (const id of Object.keys(busMarkers)) {
       if (!seenIds.has(id)) {
         map.removeLayer(busMarkers[id]);
         delete busMarkers[id];
+        delete busLastPos[id];
+        delete busStaleCount[id];
+        delete busFirstSeen[id];
       }
     }
 
+    applyFilters();
+
     document.getElementById('lastUpdate').textContent = now();
+    document.getElementById('busCountFooter').innerHTML = `<strong>${totalCount}</strong> buses active`;
     const status = document.getElementById('liveStatus');
     status.textContent = 'LIVE';
     status.className = 'status live';
   }
 
+  // ── ADD / REMOVE ROUTES ──────────────────────────────────
+  function addRoute() {
+    const input = document.getElementById('addRouteInput');
+    const r = input.value.trim().toUpperCase();
+    if (!r || ROUTES[r]) { input.value = ''; return; }
+    ROUTES[r] = EXTRA_COLORS[colorIdx % EXTRA_COLORS.length];
+    colorIdx++;
+    input.value = '';
+    renderBadges();
+    // Load stops for new route
+    fetchStops(r).then(stops => {
+      stopsData[r] = stops;
+      updateNearestStops();
+      if (showStops) renderStopMarkers(r);
+    }).catch(() => {});
+    updateBuses();
+  }
+
+  function removeRoute(r) {
+    if (['21','42'].includes(r)) return;
+    // Remove markers for this route
+    for (const [id, marker] of Object.entries(busMarkers)) {
+      if (id.startsWith(`${r}-`)) {
+        map.removeLayer(marker);
+        delete busMarkers[id];
+      }
+    }
+    if (stopMarkers[r]) {
+      stopMarkers[r].forEach(m => map.removeLayer(m));
+      delete stopMarkers[r];
+    }
+    delete ROUTES[r];
+    delete stopsData[r];
+    delete nearestStops[r];
+    renderBadges();
+  }
+
   // ── GEOLOCATION ──────────────────────────────────────────
   function locateMe() {
-    if (!navigator.geolocation) {
-      alert('Geolocation not supported by your browser.');
-      return;
-    }
+    if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
     const btn = document.getElementById('locateBtn');
     btn.textContent = '⊙ Locating…';
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         btn.textContent = '⊙ Location On';
         btn.classList.add('active');
+        document.getElementById('zoomMeBtn').style.display = '';
 
-        // Drop user marker
         if (userMarker) map.removeLayer(userMarker);
         userMarker = L.circleMarker([userLocation.lat, userLocation.lng], {
-          radius: 8,
-          fillColor: '#4ade80',
-          fillOpacity: 0.9,
-          color: '#fff',
-          weight: 2,
-        }).addTo(map).bindPopup('You are here');
+          radius: 9, fillColor: '#4ade80', fillOpacity: 0.9, color: '#fff', weight: 2,
+        }).addTo(map).bindPopup('<div class="stop-popup"><strong>You are here</strong></div>');
 
-        map.setView([userLocation.lat, userLocation.lng], 14);
+        map.setView([userLocation.lat, userLocation.lng], 15);
         updateNearestStops();
         refreshPopups();
       },
@@ -506,12 +725,15 @@
     );
   }
 
+  function zoomToMe() {
+    if (userLocation) map.setView([userLocation.lat, userLocation.lng], 15);
+  }
+
   function updateNearestStops() {
     if (!userLocation) return;
     for (const route of Object.keys(ROUTES)) {
-      if (!stopsData[route] || stopsData[route].length === 0) continue;
-      let minDist = Infinity;
-      let nearest = null;
+      if (!stopsData[route] || !stopsData[route].length) continue;
+      let minDist = Infinity, nearest = null;
       for (const stop of stopsData[route]) {
         const d = haversineKm(userLocation.lat, userLocation.lng, parseFloat(stop.lat), parseFloat(stop.lng));
         if (d < minDist) { minDist = d; nearest = stop; }
@@ -521,29 +743,24 @@
   }
 
   function refreshPopups() {
-    for (const id of Object.keys(busMarkers)) {
-      const m = busMarkers[id];
-      if (m._busData) {
-        m.setPopupContent(buildPopup(m._busData, m._route));
-      }
+    for (const [id, m] of Object.entries(busMarkers)) {
+      if (m._busData) m.setPopupContent(buildPopup(m._busData, m._route, id));
     }
   }
 
   // ── INIT ────────────────────────────────────────────────
   async function init() {
-    // Load stops for both routes (for ETA calculation)
+    renderBadges();
+
     for (const route of Object.keys(ROUTES)) {
       fetchStops(route).then(stops => {
         stopsData[route] = stops;
         updateNearestStops();
         refreshPopups();
-      }).catch(e => console.warn(`Stops for ${route} failed:`, e));
+      }).catch(e => console.warn(`Stops ${route} failed:`, e));
     }
 
-    // Initial bus fetch
     await updateBuses();
-
-    // Poll every 15s
     setInterval(updateBuses, REFRESH_MS);
   }
 
