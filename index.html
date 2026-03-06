@@ -120,6 +120,10 @@
       flex-shrink: 0;
       z-index: 999;
     }
+    /* On desktop, rows sit side by side */
+    .toolbar-row {
+      display: contents;
+    }
 
     .toolbar-label {
       font-size: 10px;
@@ -323,6 +327,60 @@
     .stop-popup { padding: 8px 12px; font-size: 11px; min-width: 140px; }
     .stop-popup strong { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; display: block; margin-bottom: 2px; }
     .stop-popup span { color: var(--muted); font-size: 10px; letter-spacing: 0.06em; }
+
+    /* ── MOBILE ── */
+    @media (max-width: 600px) {
+      header {
+        height: 44px;
+        padding: 0 12px;
+        gap: 10px;
+      }
+      .logo { font-size: 17px; }
+      /* Hide badges from header on mobile — route info is in footer */
+      .route-badges { display: none; }
+
+      /* Toolbar becomes two stacked rows */
+      .toolbar {
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px 10px;
+        gap: 6px;
+      }
+      .toolbar-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      /* Direction buttons scroll horizontally */
+      .dir-filters {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        flex: 1;
+      }
+      .dir-filters::-webkit-scrollbar { display: none; }
+      .dir-btn {
+        font-size: 12px;
+        padding: 5px 10px;
+        flex-shrink: 0;
+      }
+      .toolbar-divider { display: none; }
+      .add-route-form { margin-left: 0; }
+      .toolbar-label { display: none; }
+
+      /* Footer: single line, smaller */
+      .footer { gap: 12px; padding: 0 12px; }
+      .footer-item:first-child { display: none; } /* hide "Refreshes every 15s" */
+
+      /* Map buttons: smaller on mobile */
+      .map-btn { font-size: 11px; padding: 6px 10px; }
+      .map-btns { bottom: 42px; right: 8px; }
+
+      /* Popup: slightly narrower */
+      .leaflet-popup-content { min-width: 190px !important; }
+    }
   </style>
 </head>
 <body>
@@ -339,23 +397,29 @@
 
 <!-- TOOLBAR -->
 <div class="toolbar">
-  <span class="toolbar-label">Direction</span>
-  <div class="dir-filters" id="dirFilters">
-    <button class="dir-btn active" data-dir="ALL" onclick="setDirFilter('ALL')">All</button>
-    <button class="dir-btn" data-dir="Eastbound" onclick="setDirFilter('Eastbound')">East</button>
-    <button class="dir-btn" data-dir="Westbound" onclick="setDirFilter('Westbound')">West</button>
-    <button class="dir-btn" data-dir="Northbound" onclick="setDirFilter('Northbound')">North</button>
-    <button class="dir-btn" data-dir="Southbound" onclick="setDirFilter('Southbound')">South</button>
-    <button class="dir-btn" data-dir="Inbound" onclick="setDirFilter('Inbound')">Inbound</button>
-    <button class="dir-btn" data-dir="Outbound" onclick="setDirFilter('Outbound')">Outbound</button>
+  <!-- Row 1: direction filters -->
+  <div class="toolbar-row">
+    <span class="toolbar-label">Direction</span>
+    <div class="dir-filters" id="dirFilters">
+      <button class="dir-btn active" data-dir="ALL" onclick="setDirFilter('ALL')">All</button>
+      <button class="dir-btn" data-dir="Eastbound" onclick="setDirFilter('Eastbound')">East</button>
+      <button class="dir-btn" data-dir="Westbound" onclick="setDirFilter('Westbound')">West</button>
+      <button class="dir-btn" data-dir="Northbound" onclick="setDirFilter('Northbound')">North</button>
+      <button class="dir-btn" data-dir="Southbound" onclick="setDirFilter('Southbound')">South</button>
+      <button class="dir-btn" data-dir="Inbound" onclick="setDirFilter('Inbound')">Inbound</button>
+      <button class="dir-btn" data-dir="Outbound" onclick="setDirFilter('Outbound')">Outbound</button>
+    </div>
   </div>
-  <div class="toolbar-divider"></div>
-  <button class="toggle-btn" id="stopsToggle" onclick="toggleStops()">⬡ Stops</button>
-  <div class="add-route-form">
-    <span class="toolbar-label">+ Route</span>
-    <input class="add-route-input" id="addRouteInput" type="text" maxlength="4" placeholder="e.g. 64"
-      onkeydown="if(event.key==='Enter') addRoute()" />
-    <button class="add-route-btn" onclick="addRoute()">Add</button>
+  <!-- Row 2: stops toggle + add route -->
+  <div class="toolbar-row">
+    <button class="toggle-btn" id="stopsToggle" onclick="toggleStops()">⬡ Stops</button>
+    <div class="toolbar-divider"></div>
+    <div class="add-route-form">
+      <span class="toolbar-label">+ Route</span>
+      <input class="add-route-input" id="addRouteInput" type="text" maxlength="4" placeholder="+ Route #"
+        onkeydown="if(event.key==='Enter') addRoute()" />
+      <button class="add-route-btn" onclick="addRoute()">Add</button>
+    </div>
   </div>
 </div>
 
