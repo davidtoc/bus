@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ============================================================
+  SEPTA LIVE — Real-Time Bus Tracker for Philadelphia
+  ============================================================
+  Tracks SEPTA bus routes 21 and 42 in real time, with support
+  for adding additional routes temporarily per session.
+
+  DEPENDENCIES (loaded via CDN, no npm/build step required):
+    - Leaflet 1.9.4      — interactive map rendering
+    - OpenStreetMap      — free map tile provider
+    - Google Fonts       — Barlow Condensed + IBM Plex Mono
+
+  BACKEND:
+    This app requires a small serverless proxy function to work
+    around CORS restrictions on SEPTA's API. See:
+      netlify/functions/septa.js
+
+    The proxy handles three request types:
+      /api/septa?type=buses&route=21     → live bus positions
+      /api/septa?type=stops&route=21     → stop locations for a route
+      /api/septa?type=schedule&stop_id=X → scheduled arrivals at a stop
+
+  SEPTA API DOCS:
+    https://www3.septa.org  (official, sometimes down)
+    https://opendataphilly.org/organizations/septa/
+
+  DEPLOYMENT:
+    Designed for Netlify. Drop this file and the netlify/ folder
+    into a repo, connect to Netlify, and it deploys automatically.
+    The netlify.toml in the root configures the functions path.
+
+  EXTENDING:
+    - To add a permanent route: add it to the ROUTES object below
+    - To change refresh rate: edit REFRESH_MS
+    - To change assumed bus speed (used for ETA): edit AVG_BUS_MPH
+    - To add more direction filter buttons: add a .dir-btn to the toolbar HTML
+  ============================================================
+-->
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEPTA Live — Routes 21 & 42</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── DESIGN TOKENS ──────────────────────────────────────
+       Centralized color variables. To re-theme the app,
+       change these values — everything else inherits from them.
+       --r21 and --r42 are the route brand colors (SEPTA orange/blue).
+    ─────────────────────────────────────────────────────── */
+    :root {
+      --r21: #F4831F;      /* Route 21 — SEPTA orange */
+      --r42: #0076BE;      /* Route 42 — SEPTA blue */
+      --bg: #0f1117;       /* Page background */
+      --surface: #1a1d27;  /* Cards, header, footer */
+      --border: #2a2d3a;   /* Subtle dividers */
+      --text: #e8eaf0;     /* Primary text */
+      --muted: #7a7e94;    /* Secondary / label text */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Full-viewport layout: header → toolbar → map → footer,
+       all stacked vertically with the map taking remaining space. */
+    body {
+      font-family: 'IBM Plex Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden; /* Prevent page scroll; the map handles its own scrolling */
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────
+       Contains: logo, route badges (one per active route),
+       and the live/connecting status indicator.
+    ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+      z-index: 1000;
+    }
+
+    .logo {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 800;
+      font-size: 20px;
+      letter-spacing: 0.05em;
+      color: var(--text);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .logo span { color: var(--r21); } /* The bullet between SEPTA and LIVE */
+
+    /* Route badge container — badges are generated dynamically
+       by renderBadges() whenever ROUTES changes. */
+    .route-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .badge {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      /* Background color is set inline by JS using the route's color */
+    }
+
+    /* Animated pulse dot inside each route badge */
+    .badge .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.5);
+      animation: pulse-dot 2s infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.5; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.4); }
+    }
+
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    /* Status indicator: shows CONNECTING on load, LIVE once data arrives.
+       The green blinking dot is added via ::before when class is "live". */
+    .status {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .status.live { color: #4ade80; }
+    .status.live::before {
+      content: '●';
+      margin-right: 4px;
+      animation: blink 1.5s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── TOOLBAR ────────────────────────────────────────────
+       Contains: direction filter buttons, stop marker toggle,
+       and the add-route form.
+
+       On desktop: all controls sit in a single row (toolbar-row
+       uses `display: contents` to flatten into the flex parent).
+       On mobile: becomes two stacked rows (see @media below).
+    ─────────────────────────────────────────────────────── */
+    .toolbar {
+      background: #13161f;
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 999;
+    }
+
+    /* On desktop, toolbar-row is transparent — its children
+       flow directly into the toolbar's flex layout. */
+    .toolbar-row {
+      display: contents;
+    }
+
+    .toolbar-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    /* Direction filter button strip.
+       Each button calls setDirFilter() with its data-dir value.
+       "ALL" shows everything; others hide non-matching buses. */
+    .dir-filters {
+      display: flex;
+      gap: 4px;
+    }
+    .dir-btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 3px 9px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s;
+      text-transform: uppercase;
+    }
+    .dir-btn:hover { border-color: var(--text); color: var(--text); }
+    .dir-btn.active { background: var(--r21); border-color: var(--r21); color: #fff; }
+
+    /* Thin vertical separator between toolbar sections */
+    .toolbar-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    /* Toggle button — used for the Stops layer.
+       Gains .active class when the layer is visible. */
+    .toggle-btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 3px 9px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .toggle-btn:hover { border-color: var(--text); color: var(--text); }
+    .toggle-btn.active { background: #1e3a2a; border-color: #4ade80; color: #4ade80; }
+
+    /* Add-route form: text input + button, pushed to the far right.
+       Routes added here are session-only — they disappear on page reload.
+       Routes 21 and 42 are always present and cannot be removed. */
+    .add-route-form {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .add-route-input {
+      width: 52px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 3px 7px;
+      text-align: center;
+      border-radius: 2px;
+      outline: none;
+      text-transform: uppercase;
+    }
+    .add-route-input:focus { border-color: var(--r21); }
+    .add-route-input::placeholder { color: var(--muted); font-weight: 400; letter-spacing: 0; }
+    .add-route-btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      background: var(--r21);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: opacity 0.15s;
+      text-transform: uppercase;
+    }
+    .add-route-btn:hover { opacity: 0.85; }
+
+    /* ── MAP ────────────────────────────────────────────────
+       Leaflet renders into this div. flex: 1 makes it fill
+       all remaining vertical space between toolbar and footer.
+    ─────────────────────────────────────────────────────── */
+    #map {
+      flex: 1;
+      width: 100%;
+    }
+
+    /* ── FOOTER ─────────────────────────────────────────────
+       Shows: refresh interval, last update time, total bus count.
+    ─────────────────────────────────────────────────────── */
+    .footer {
+      height: 32px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 20px;
+      flex-shrink: 0;
+    }
+    .footer-item {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .footer-item strong { color: var(--text); }
+
+    /* ── FLOATING MAP BUTTONS ───────────────────────────────
+       Positioned over the map in the bottom-right corner.
+       "My Location" requests geolocation.
+       "Zoom to Me" re-centers the map on the user (appears only
+       after location is granted).
+    ─────────────────────────────────────────────────────── */
+    .map-btns {
+      position: absolute;
+      bottom: 50px;
+      right: 12px;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .map-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      white-space: nowrap;
+      border-radius: 2px;
+    }
+    .map-btn:hover { background: var(--border); border-color: var(--r21); color: var(--r21); }
+    .map-btn.active { border-color: #4ade80; color: #4ade80; }
+
+    /* ── LEAFLET POPUP OVERRIDES ────────────────────────────
+       Leaflet's default popups are light-themed. These overrides
+       make them match the dark app theme.
+       The tip (triangle) is hidden; we use a flat popup style.
+    ─────────────────────────────────────────────────────── */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 4px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+      color: var(--text) !important;
+      padding: 0 !important;
+    }
+    .leaflet-popup-content {
+      margin: 0 !important;
+      width: auto !important;
+      min-width: 220px;
+    }
+    .leaflet-popup-tip-container { display: none; }
+    .leaflet-popup-close-button {
+      color: var(--muted) !important;
+      font-size: 18px !important;
+      padding: 6px 8px !important;
+    }
+    .leaflet-popup-close-button:hover { color: var(--text) !important; }
+
+    /* ── BUS POPUP CONTENTS ─────────────────────────────────
+       Shown when user clicks a bus marker.
+       Displays: route, direction, destination, position age
+       (or stale warning), and ETA to nearest stop if location
+       is enabled.
+    ─────────────────────────────────────────────────────── */
+    .popup-inner { padding: 14px 16px 16px; }
+    .popup-route {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 800;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .popup-route-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .popup-dir {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .popup-dest { font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.05em; }
+
+    /* Normal age label — shown when position is fresh */
+    .popup-age { font-size: 10px; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.04em; }
+
+    /* Stale warning — shown in red when GPS hasn't moved in 2+ cycles (~30s) */
+    .popup-stale { font-size: 10px; color: #f87171; margin-bottom: 8px; letter-spacing: 0.04em; }
+
+    .popup-divider { height: 1px; background: var(--border); margin: 10px 0; }
+    .popup-eta { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+    .popup-eta-val { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 700; }
+    .popup-stop-name { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.04em; }
+    .popup-no-location { font-size: 11px; color: var(--muted); font-style: italic; }
+    .popup-vehicle { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; margin-top: 10px; }
+
+    /* ── STOP POPUP CONTENTS ────────────────────────────────
+       Shown when user clicks a stop marker (when stops layer
+       is visible). Displays the stop name, ID, and live
+       scheduled arrivals fetched on demand from SEPTA's
+       BusSchedules API.
+
+       NOTE: Arrival times are schedule-based, not GPS-based,
+       so they may be inaccurate if buses are running late.
+    ─────────────────────────────────────────────────────── */
+    .stop-popup { padding: 8px 12px; font-size: 11px; min-width: 140px; }
+    .stop-popup strong { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; display: block; margin-bottom: 2px; }
+    .stop-popup span { color: var(--muted); font-size: 10px; letter-spacing: 0.06em; }
+
+    /* ── RESPONSIVE / MOBILE ────────────────────────────────
+       Below 600px (typical phone width), the layout adapts:
+       - Header hides route badges (too many to fit)
+       - Toolbar stacks into two rows; direction buttons become
+         horizontally scrollable instead of wrapping
+       - Footer hides the "refreshes every 15s" item
+       - Map buttons shrink slightly
+    ─────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      header {
+        height: 44px;
+        padding: 0 12px;
+        gap: 10px;
+      }
+      .logo { font-size: 17px; }
+      .route-badges { display: none; }
+
+      /* Toolbar becomes two stacked rows */
+      .toolbar {
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px 10px;
+        gap: 6px;
+      }
+      /* toolbar-row now acts as a real flex row (not display:contents) */
+      .toolbar-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* Direction buttons scroll horizontally without wrapping */
+      .dir-filters {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        flex: 1;
+      }
+      .dir-filters::-webkit-scrollbar { display: none; }
+      .dir-btn {
+        font-size: 12px;
+        padding: 5px 10px;
+        flex-shrink: 0;
+      }
+
+      .toolbar-divider { display: none; }
+      .add-route-form { margin-left: 0; }
+      .toolbar-label { display: none; }
+
+      .footer { gap: 12px; padding: 0 12px; }
+      .footer-item:first-child { display: none; }
+
+      .map-btn { font-size: 11px; padding: 6px 10px; }
+      .map-btns { bottom: 42px; right: 8px; }
+
+      .leaflet-popup-content { min-width: 190px !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────
+     Route badges are injected here by renderBadges() in JS.
+     Each badge shows the route number, a bus count, and
+     (for session-added routes) a remove button.
+──────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">SEPTA<span>•</span>LIVE</div>
+  <div class="route-badges" id="routeBadges">
+    <!-- Populated dynamically by renderBadges() -->
+  </div>
+  <div class="header-right">
+    <div class="status" id="liveStatus">CONNECTING</div>
+  </div>
+</header>
+
+<!-- ── TOOLBAR ─────────────────────────────────────────────
+     Two logical rows (flattened to one on desktop via CSS).
+     Row 1: Direction filter buttons
+     Row 2: Stops layer toggle + Add-route form
+
+     To add more direction options, copy a .dir-btn and set
+     data-dir to the direction string returned by formatDir().
+──────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <div class="toolbar-row">
+    <span class="toolbar-label">Direction</span>
+    <div class="dir-filters" id="dirFilters">
+      <button class="dir-btn active" data-dir="ALL"       onclick="setDirFilter('ALL')">All</button>
+      <button class="dir-btn"        data-dir="Eastbound" onclick="setDirFilter('Eastbound')">East</button>
+      <button class="dir-btn"        data-dir="Westbound" onclick="setDirFilter('Westbound')">West</button>
+      <button class="dir-btn"        data-dir="Northbound" onclick="setDirFilter('Northbound')">North</button>
+      <button class="dir-btn"        data-dir="Southbound" onclick="setDirFilter('Southbound')">South</button>
+      <button class="dir-btn"        data-dir="Inbound"   onclick="setDirFilter('Inbound')">Inbound</button>
+      <button class="dir-btn"        data-dir="Outbound"  onclick="setDirFilter('Outbound')">Outbound</button>
+    </div>
+  </div>
+  <div class="toolbar-row">
+    <button class="toggle-btn" id="stopsToggle" onclick="toggleStops()">⬡ Stops</button>
+    <div class="toolbar-divider"></div>
+    <div class="add-route-form">
+      <span class="toolbar-label">+ Route</span>
+      <!-- Enter a SEPTA bus route number (e.g. 64, G, MFL) and press Add or Enter -->
+      <input class="add-route-input" id="addRouteInput" type="text" maxlength="4"
+             placeholder="+ Route #" onkeydown="if(event.key==='Enter') addRoute()" />
+      <button class="add-route-btn" onclick="addRoute()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet renders the map into this div -->
+<div id="map"></div>
+
+<!-- Floating buttons overlaid on the map -->
+<div class="map-btns">
+  <button class="map-btn" id="locateBtn" onclick="locateMe()">⊙ My Location</button>
+  <!-- Hidden until geolocation is granted -->
+  <button class="map-btn" id="zoomMeBtn" onclick="zoomToMe()" style="display:none">⊕ Zoom to Me</button>
+</div>
+
+<div class="footer">
+  <div class="footer-item">Refreshes every <strong>15s</strong></div>
+  <div class="footer-item">Updated: <strong id="lastUpdate">—</strong></div>
+  <div class="footer-item" id="busCountFooter"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // ── CONFIGURATION ────────────────────────────────────────
+  // Adjust these values to change app behavior without touching
+  // the rest of the code.
+
+  const REFRESH_MS  = 15000;  // How often to poll SEPTA for bus positions (ms)
+  const AVG_BUS_MPH = 12;     // Assumed average speed for ETA calculation.
+                               // 12 mph accounts for stops, lights, and city traffic.
+                               // Increase for faster/less-trafficked routes.
+
+  // Colors assigned to session-added routes (cycles through this array)
+  const EXTRA_COLORS = ['#a855f7','#10b981','#ef4444','#f59e0b','#ec4899','#14b8a6','#8b5cf6'];
+  let colorIdx = 0;
+
+  // ── ROUTES ──────────────────────────────────────────────
+  // The base routes always shown. Key = SEPTA route number,
+  // value = hex color for markers and UI elements.
+  // To make a route permanent, add it here.
+  let ROUTES = {
+    '21': '#F4831F',   // Eastbound/Westbound along Passyunk & Chestnut
+    '42': '#0076BE',   // North/South through Center City
+  };
+
+  // ── MAP INITIALIZATION ───────────────────────────────────
+  // Centered on Center City Philadelphia at zoom 13.
+  // Zoom control moved to top-right (default is top-left).
+  const map = L.map('map', { zoomControl: false }).setView([39.952, -75.163], 13);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(map);
+
+  L.control.zoom({ position: 'topright' }).addTo(map);
+
+  // ── APP STATE ────────────────────────────────────────────
+  // All mutable state lives here for clarity.
+
+  let busMarkers   = {};  // id → Leaflet marker. id format: "{route}-{vehicleId}"
+  let stopMarkers  = {};  // routeNum → array of Leaflet circleMarkers
+  let stopsData    = {};  // routeNum → array of stop objects from SEPTA Stops API
+  let nearestStops = {};  // routeNum → { stop, distKm } — nearest stop to user per route
+  let userLocation = null;  // { lat, lng } once geolocation is granted
+  let userMarker   = null;  // Green dot showing user's position on map
+  let showStops    = false; // Whether the stop markers layer is visible
+  let dirFilter    = 'ALL'; // Current direction filter value
+
+  // Stale bus detection: track each bus's last known position.
+  // If it hasn't moved in 2+ refresh cycles, it's considered stale
+  // (GPS may not be reporting). Stale buses are dimmed on the map.
+  let busLastPos   = {};  // id → { lat, lng }
+  let busStaleCount= {};  // id → number of consecutive cycles without movement
+  let busFirstSeen = {};  // id → timestamp (ms) when first detected this session
+
+  // ── UTILITY FUNCTIONS ────────────────────────────────────
+
+  /**
+   * Haversine formula: great-circle distance between two lat/lng points.
+   * Returns distance in kilometers.
+   * Used for: finding nearest stop to user, estimating bus ETA.
+   */
+  function haversineKm(lat1, lng1, lat2, lng2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  /**
+   * Convert kilometers to minutes at AVG_BUS_MPH.
+   * Note: this is crow-flies distance, not route distance,
+   * so it's an approximation. Works reasonably well for
+   * mostly-straight routes like the 21.
+   */
+  function kmToMins(km) {
+    return Math.round((km * 0.621371 / AVG_BUS_MPH) * 60);
+  }
+
+  /**
+   * Normalize direction strings from SEPTA's API.
+   * The API returns inconsistent formats across endpoints:
+   *   - "EastBound", "Eastbound", "E", "0", "IB", etc.
+   * This function maps all variants to a clean display string.
+   */
+  function formatDir(raw) {
+    if (!raw) return 'Unknown';
+    const r = String(raw).trim().toUpperCase();
+    if (r === '0' || r === 'INBOUND'  || r === 'IB') return 'Inbound';
+    if (r === '1' || r === 'OUTBOUND' || r === 'OB') return 'Outbound';
+    const map = {
+      N: 'Northbound', S: 'Southbound', E: 'Eastbound', W: 'Westbound',
+      NORTH: 'Northbound', SOUTH: 'Southbound', EAST: 'Eastbound', WEST: 'Westbound',
+    };
+    return map[r] || r.charAt(0) + r.slice(1).toLowerCase();
+  }
+
+  /**
+   * Human-readable "time ago" string from a timestamp.
+   * Used to show how recently a bus's GPS position was updated.
+   */
+  function timeAgo(ts) {
+    if (!ts) return '—';
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${s % 60}s ago`;
+  }
+
+  /** Current time formatted as HH:MM:SS for the footer */
+  function now() {
+    return new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  // ── ROUTE BADGES ─────────────────────────────────────────
+  /**
+   * Re-renders the header badge strip from the current ROUTES object.
+   * Called on init, when a route is added, and when one is removed.
+   * Each badge shows a live bus count (updated by updateBuses()).
+   * Session-added routes get a ✕ remove button.
+   */
+  function renderBadges() {
+    const el = document.getElementById('routeBadges');
+    el.innerHTML = Object.entries(ROUTES).map(([r, color]) => `
+      <div class="badge" style="background:${color};color:#fff">
+        <div class="dot"></div>
+        ROUTE ${r}
+        <span id="count${r}" style="opacity:0.75;font-weight:400">—</span>
+        ${!['21','42'].includes(r)
+          ? `<span onclick="removeRoute('${r}')" style="cursor:pointer;opacity:0.7;margin-left:2px">✕</span>`
+          : ''}
+      </div>`).join('');
+  }
+
+  // ── BUS MARKER ICON ──────────────────────────────────────
+  /**
+   * Generates an SVG-based Leaflet divIcon for a bus.
+   *
+   * The icon has two parts:
+   *   1. A directional arrow (triangle) that rotates to match the bus heading
+   *   2. A circle showing the route number
+   *
+   * Stale buses (GPS frozen) are rendered at 35% opacity and get
+   * a red dot in the corner as a visual warning.
+   *
+   * @param {string} route   - Route number (e.g. "21")
+   * @param {number} heading - Compass heading in degrees (0 = north)
+   * @param {boolean} stale  - Whether to render the stale/warning state
+   */
+  function makeBusIcon(route, heading, stale) {
+    const color   = ROUTES[route] || '#888';
+    const angle   = heading || 0;
+    const opacity = stale ? 0.35 : 1;
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44" opacity="${opacity}">
+        <!-- Directional arrow rotated to match bus heading -->
+        <g transform="translate(18,18) rotate(${angle}) translate(-18,-18)">
+          <polygon points="18,2 26,14 10,14" fill="${color}" opacity="0.9"/>
+        </g>
+        <!-- Route number circle -->
+        <circle cx="18" cy="22" r="13" fill="${color}" stroke="#0f1117" stroke-width="2.5"/>
+        <text x="18" y="27" font-family="Barlow Condensed,sans-serif" font-weight="800"
+              font-size="13" fill="white" text-anchor="middle">${route}</text>
+        <!-- Stale indicator: red dot in top-right corner -->
+        ${stale ? `<circle cx="28" cy="10" r="5" fill="#f87171" stroke="#0f1117" stroke-width="1.5"/>` : ''}
+      </svg>`;
+
+    return L.divIcon({
+      html: svg,
+      className: '',       // Suppress Leaflet's default white box
+      iconSize:   [36, 44],
+      iconAnchor: [18, 22], // Center of the circle
+      popupAnchor:[0, -24], // Above the icon
+    });
+  }
+
+  // ── BUS POPUP ────────────────────────────────────────────
+  /**
+   * Builds the HTML content for a bus marker's popup.
+   *
+   * Shows:
+   *   - Route number and color
+   *   - Direction (formatted) and destination
+   *   - Position freshness (or stale warning)
+   *   - ETA to user's nearest stop (if geolocation is enabled)
+   *   - Vehicle ID
+   *
+   * The ETA is recalculated live when popups are refreshed.
+   * It's a straight-line distance estimate — see kmToMins().
+   */
+  function buildPopup(bus, route, id) {
+    const color    = ROUTES[route] || '#888';
+    const dir      = formatDir(bus.Direction || bus.direction);
+    const dest     = bus.destination || bus.Destination || '';
+    const stale    = (busStaleCount[id] || 0) >= 2;
+    const firstSeen= busFirstSeen[id];
+    const ageStr   = firstSeen ? timeAgo(firstSeen) : '—';
+
+    // Position freshness indicator
+    const statusHtml = stale
+      ? `<div class="popup-stale">⚠ Position unchanged for ${busStaleCount[id]} cycles</div>`
+      : `<div class="popup-age">Position updated ${ageStr}</div>`;
+
+    // ETA section — only shown if user has granted geolocation
+    let etaHtml;
+    if (userLocation && nearestStops[route]) {
+      const ns     = nearestStops[route];
+      const distKm = haversineKm(
+        parseFloat(bus.lat), parseFloat(bus.lng),
+        parseFloat(ns.stop.lat), parseFloat(ns.stop.lng)
+      );
+      const mins   = kmToMins(distKm);
+      const distMi = (distKm * 0.621371).toFixed(1);
+      etaHtml = `
+        <div class="popup-divider"></div>
+        <div class="popup-eta">ETA to nearest stop</div>
+        <div class="popup-eta-val" style="color:${color}">~${mins} min</div>
+        <div class="popup-stop-name">${ns.stop.stopname} · ${distMi} mi away</div>`;
+    } else {
+      etaHtml = `
+        <div class="popup-divider"></div>
+        <div class="popup-no-location">Enable location for ETA to nearest stop</div>`;
+    }
+
+    return `
+      <div class="popup-inner">
+        <div class="popup-route">
+          <div class="popup-route-dot" style="background:${color}"></div>
+          Route ${route}
+        </div>
+        <div class="popup-dir" style="color:${color}">${dir}</div>
+        ${dest ? `<div class="popup-dest">→ ${dest}</div>` : ''}
+        ${statusHtml}
+        ${etaHtml}
+        <div class="popup-vehicle">Vehicle #${bus.label || bus.VehicleID || '—'}</div>
+      </div>`;
+  }
+
+  // ── DIRECTION FILTER ─────────────────────────────────────
+  /**
+   * Sets the active direction filter and updates the map.
+   * Buses that don't match are hidden (not removed), so they
+   * reappear instantly if the filter is changed back.
+   */
+  function setDirFilter(dir) {
+    dirFilter = dir;
+    document.querySelectorAll('.dir-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.dir === dir);
+    });
+    applyFilters();
+  }
+
+  /**
+   * Shows or hides each bus marker based on the current dirFilter.
+   * Called after filter changes and after each bus data refresh.
+   */
+  function applyFilters() {
+    for (const [id, marker] of Object.entries(busMarkers)) {
+      const bus = marker._busData;
+      const dir = formatDir(bus?.Direction || bus?.direction);
+      const show = dirFilter === 'ALL' || dir === dirFilter;
+      if (show) {
+        if (!map.hasLayer(marker)) marker.addTo(map);
+      } else {
+        if (map.hasLayer(marker)) map.removeLayer(marker);
+      }
+    }
+  }
+
+  // ── STOP MARKERS ─────────────────────────────────────────
+  /**
+   * Toggles the stop markers layer on/off.
+   * Stop data is already loaded for active routes (fetched on init).
+   * For session-added routes, stops are fetched when the route is added.
+   */
+  function toggleStops() {
+    showStops = !showStops;
+    document.getElementById('stopsToggle').classList.toggle('active', showStops);
+    for (const route of Object.keys(ROUTES)) {
+      renderStopMarkers(route);
+    }
+  }
+
+  /**
+   * Renders stop circle markers for a single route.
+   * Clears and re-renders when called (e.g. after toggle or route change).
+   *
+   * Each stop gets a popup shell immediately. Arrival times are fetched
+   * lazily when the user actually clicks a stop (see loadStopArrivals).
+   * This avoids making hundreds of API calls upfront.
+   */
+  function renderStopMarkers(route) {
+    // Clear existing markers for this route
+    if (stopMarkers[route]) {
+      stopMarkers[route].forEach(m => map.removeLayer(m));
+      stopMarkers[route] = [];
+    }
+    if (!showStops || !stopsData[route]) return;
+
+    const color = ROUTES[route] || '#888';
+    stopMarkers[route] = stopsData[route].map(stop => {
+      const lat = parseFloat(stop.lat);
+      const lng = parseFloat(stop.lng);
+      if (isNaN(lat) || isNaN(lng)) return null;
+
+      const marker = L.circleMarker([lat, lng], {
+        radius:      4,
+        fillColor:   color,
+        fillOpacity: 0.7,
+        color:       '#0f1117',
+        weight:      1,
+      }).addTo(map);
+
+      marker.bindPopup(buildStopPopupShell(stop), { maxWidth: 200 });
+      // Load arrival times only when the stop is actually clicked
+      marker.on('click', () => loadStopArrivals(stop, marker));
+      return marker;
+    }).filter(Boolean);
+  }
+
+  /**
+   * Returns the initial popup HTML for a stop — just the name
+   * and a "Loading arrivals…" placeholder.
+   * The placeholder is replaced by loadStopArrivals() once data arrives.
+   */
+  function buildStopPopupShell(stop) {
+    return `
+      <div class="stop-popup">
+        <strong>${stop.stopname || 'Stop'}</strong>
+        <span>STOP #${stop.stopid || '—'}</span>
+        <div id="arrivals-${stop.stopid}" style="margin-top:6px;font-size:10px;color:var(--muted)">
+          Loading arrivals…
+        </div>
+      </div>`;
+  }
+
+  /**
+   * Fetches scheduled arrival times for a stop from SEPTA's
+   * BusSchedules API and injects them into the open popup.
+   *
+   * ⚠️ LIMITATION: BusSchedules returns scheduled times, not
+   * real-time GPS predictions. If a bus is running late, the
+   * displayed time will not reflect that delay.
+   *
+   * A 80ms delay is used before updating the DOM to ensure
+   * Leaflet has fully rendered the popup before we query it.
+   */
+  async function loadStopArrivals(stop, marker) {
+    setTimeout(async () => {
+      const el = document.getElementById(`arrivals-${stop.stopid}`);
+      if (!el) return; // Popup may have been closed
+
+      try {
+        const res = await fetch(`/api/septa?type=schedule&stop_id=${stop.stopid}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        el.outerHTML = renderArrivals(data);
+        marker.update(); // Recalculate popup position after size change
+      } catch (e) {
+        const el2 = document.getElementById(`arrivals-${stop.stopid}`);
+        if (el2) el2.textContent = 'Could not load arrivals.';
+      }
+    }, 80);
+  }
+
+  /**
+   * Converts raw BusSchedules API response into an HTML arrivals list.
+   *
+   * API response shape:
+   *   { "21": [ { date: "3:42 pm", direction: "Westbound", ... }, ... ], "42": [...] }
+   *
+   * Shows up to 2 upcoming trips per route. Times are color-coded:
+   *   Green  = arriving in ≤3 minutes
+   *   Yellow = arriving in ≤12 minutes
+   *   Grey   = further out
+   */
+  function renderArrivals(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return `<div style="font-size:10px;color:var(--muted)">No arrival data.</div>`;
+    }
+
+    let rows = [];
+    for (const [routeNum, trips] of Object.entries(data)) {
+      if (!Array.isArray(trips) || trips.length === 0) continue;
+      const color    = ROUTES[routeNum] || '#aaa';
+      const upcoming = trips.slice(0, 2); // Show next 2 per route
+
+      for (const trip of upcoming) {
+        const timeStr  = trip.date || trip.DateCalender || '';
+        const dir      = trip.direction || trip.Direction || '';
+        const mins     = parseMinutesUntil(timeStr);
+        const timeClass= mins === null ? 'far'
+                       : mins <= 3    ? 'soon'
+                       : mins <= 12   ? 'medium'
+                       :                'far';
+        const timeLabel= mins === null ? timeStr
+                       : mins === 0   ? 'Now'
+                       :                `${mins} min`;
+
+        rows.push(`
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:${color};min-width:22px">${routeNum}</div>
+            <div style="font-size:10px;color:var(--muted);flex:1">${formatDir(dir)}</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:${
+              timeClass === 'soon' ? '#4ade80' : timeClass === 'medium' ? '#fbbf24' : 'var(--muted)'
+            }">${timeLabel}</div>
+          </div>`);
+      }
+    }
+
+    if (rows.length === 0) {
+      return `<div style="font-size:10px;color:var(--muted);margin-top:4px">No upcoming service.</div>`;
+    }
+
+    return `
+      <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin:6px 0 4px">
+        Next Arrivals
+      </div>
+      ${rows.join('')}`;
+  }
+
+  /**
+   * Parses a time string like "3:42 pm" or "14:30" into minutes
+   * from now. Returns null if the string can't be parsed.
+   *
+   * If the parsed time is in the past (e.g. it's 3:50 and the
+   * schedule says 3:42), it assumes the next day.
+   */
+  function parseMinutesUntil(timeStr) {
+    if (!timeStr) return null;
+    const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+    if (!match) return null;
+
+    let hours    = parseInt(match[1]);
+    const mins   = parseInt(match[2]);
+    const ampm   = (match[3] || '').toLowerCase();
+
+    if (ampm === 'pm' && hours !== 12) hours += 12;
+    if (ampm === 'am' && hours === 12) hours  = 0;
+
+    const now       = new Date();
+    const scheduled = new Date(now);
+    scheduled.setHours(hours, mins, 0, 0);
+
+    if (scheduled < now) scheduled.setDate(scheduled.getDate() + 1);
+    return Math.round((scheduled - now) / 60000);
+  }
+
+  // ── DATA FETCHING ────────────────────────────────────────
+
+  /**
+   * Fetches current live bus positions for a route.
+   * Proxied through our Netlify function to avoid CORS issues
+   * with SEPTA's API.
+   *
+   * SEPTA TransitView API returns objects with at minimum:
+   *   lat, lng, heading, Direction, destination, label (vehicle ID),
+   *   VehicleID, next_stop_name, next_stop_sequence
+   */
+  async function fetchBuses(route) {
+    const res = await fetch(`/api/septa?type=buses&route=${route}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // API wraps results in a "bus" key; fall back to raw array
+    const buses = data.bus || data.route || data || [];
+    return Array.isArray(buses) ? buses : Object.values(buses);
+  }
+
+  /**
+   * Fetches all stop locations for a route.
+   * Returns an array of: { stopid, stopname, lat, lng }
+   * Used for: finding nearest stop to user, rendering stop markers.
+   */
+  async function fetchStops(route) {
+    const res = await fetch(`/api/septa?type=stops&route=${route}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  }
+
+  // ── BUS MAP UPDATE ───────────────────────────────────────
+  /**
+   * Main update loop — called on init and every REFRESH_MS.
+   *
+   * For each active route:
+   *   1. Fetch current bus positions
+   *   2. Create new markers or update existing ones
+   *   3. Track whether position has changed (stale detection)
+   *   4. Remove markers for buses that have left the route
+   *
+   * After updating all routes, applies the current direction filter
+   * so newly-fetched buses respect it immediately.
+   */
+  async function updateBuses() {
+    const seenIds  = new Set(); // Track which bus IDs appeared this cycle
+    let totalCount = 0;
+
+    for (const route of Object.keys(ROUTES)) {
+      try {
+        const buses = await fetchBuses(route);
+
+        // Update the count in the route badge
+        const countEl = document.getElementById(`count${route}`);
+        if (countEl) countEl.textContent = buses.length;
+        totalCount += buses.length;
+
+        for (const bus of buses) {
+          const lat = parseFloat(bus.lat);
+          const lng = parseFloat(bus.lng);
+          if (isNaN(lat) || isNaN(lng)) continue;
+
+          // Unique ID per vehicle. Uses VehicleID or label if available,
+          // falls back to coordinates (less stable but avoids crashes).
+          const id = `${route}-${bus.label || bus.VehicleID || (lat+','+lng)}`;
+          seenIds.add(id);
+
+          // ── Stale detection ──────────────────────────────
+          // Compare current position to last known position.
+          // If unchanged within 0.00001 degrees (~1 meter), increment
+          // the stale counter. Reset to 0 if the bus moved.
+          const prev = busLastPos[id];
+          if (prev &&
+              Math.abs(prev.lat - lat) < 0.00001 &&
+              Math.abs(prev.lng - lng) < 0.00001) {
+            busStaleCount[id] = (busStaleCount[id] || 0) + 1;
+          } else {
+            busStaleCount[id] = 0;
+            busFirstSeen[id]  = Date.now();
+          }
+          busLastPos[id] = { lat, lng };
+
+          const stale         = (busStaleCount[id] || 0) >= 2;
+          const icon          = makeBusIcon(route, parseInt(bus.heading) || 0, stale);
+          const popupContent  = buildPopup(bus, route, id);
+
+          if (busMarkers[id]) {
+            // Update existing marker in place (smooth repositioning)
+            busMarkers[id].setLatLng([lat, lng]);
+            busMarkers[id].setIcon(icon);
+            // Only update popup content if it's currently open
+            if (busMarkers[id].isPopupOpen()) {
+              busMarkers[id].setPopupContent(popupContent);
+            }
+          } else {
+            // Create a new marker (don't add to map yet — applyFilters handles that)
+            const marker = L.marker([lat, lng], { icon })
+              .bindPopup(popupContent, { maxWidth: 260 });
+            busMarkers[id] = marker;
+          }
+
+          // Store bus data on the marker for filter checks and popup rebuilds
+          busMarkers[id]._busData = bus;
+          busMarkers[id]._route   = route;
+          busMarkers[id]._id      = id;
+        }
+      } catch (e) {
+        console.warn(`Route ${route} fetch failed:`, e);
+      }
+    }
+
+    // Remove markers for buses that didn't appear in this update cycle
+    // (they've gone out of service, reached the end of the line, etc.)
+    for (const id of Object.keys(busMarkers)) {
+      if (!seenIds.has(id)) {
+        map.removeLayer(busMarkers[id]);
+        delete busMarkers[id];
+        delete busLastPos[id];
+        delete busStaleCount[id];
+        delete busFirstSeen[id];
+      }
+    }
+
+    // Apply direction filter to all (including newly added) markers
+    applyFilters();
+
+    // Update footer
+    document.getElementById('lastUpdate').textContent = now();
+    document.getElementById('busCountFooter').innerHTML = `<strong>${totalCount}</strong> buses active`;
+
+    // Update live status indicator
+    const status = document.getElementById('liveStatus');
+    status.textContent = 'LIVE';
+    status.className   = 'status live';
+  }
+
+  // ── ADD / REMOVE ROUTES ──────────────────────────────────
+  /**
+   * Adds a session-only route from the toolbar input.
+   * Assigns the next color from EXTRA_COLORS, fetches stops,
+   * triggers a bus update, and re-renders the badge strip.
+   *
+   * Session-added routes disappear on page reload.
+   * Routes 21 and 42 cannot be removed (they're always active).
+   */
+  function addRoute() {
+    const input = document.getElementById('addRouteInput');
+    const r     = input.value.trim().toUpperCase();
+    if (!r || ROUTES[r]) { input.value = ''; return; } // Already exists or empty
+
+    ROUTES[r] = EXTRA_COLORS[colorIdx % EXTRA_COLORS.length];
+    colorIdx++;
+    input.value = '';
+    renderBadges();
+
+    // Load stops for the new route so ETA and stop markers work
+    fetchStops(r).then(stops => {
+      stopsData[r] = stops;
+      updateNearestStops();
+      if (showStops) renderStopMarkers(r);
+    }).catch(() => {});
+
+    updateBuses();
+  }
+
+  /**
+   * Removes a session-added route and cleans up all its markers.
+   * Guards against removing the permanent routes 21 and 42.
+   */
+  function removeRoute(r) {
+    if (['21','42'].includes(r)) return;
+
+    // Remove bus markers for this route
+    for (const [id, marker] of Object.entries(busMarkers)) {
+      if (id.startsWith(`${r}-`)) {
+        map.removeLayer(marker);
+        delete busMarkers[id];
+      }
+    }
+
+    // Remove stop markers for this route
+    if (stopMarkers[r]) {
+      stopMarkers[r].forEach(m => map.removeLayer(m));
+      delete stopMarkers[r];
+    }
+
+    delete ROUTES[r];
+    delete stopsData[r];
+    delete nearestStops[r];
+    renderBadges();
+  }
+
+  // ── GEOLOCATION ──────────────────────────────────────────
+  /**
+   * Requests the browser's geolocation API.
+   * On success:
+   *   - Stores userLocation
+   *   - Places a green dot on the map
+   *   - Centers map on user
+   *   - Calculates nearest stop per route
+   *   - Refreshes all bus popups to show ETAs
+   *   - Reveals the "Zoom to Me" button
+   */
+  function locateMe() {
+    if (!navigator.geolocation) {
+      alert('Geolocation not supported by your browser.');
+      return;
+    }
+
+    const btn = document.getElementById('locateBtn');
+    btn.textContent = '⊙ Locating…';
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        btn.textContent = '⊙ Location On';
+        btn.classList.add('active');
+        document.getElementById('zoomMeBtn').style.display = '';
+
+        // Remove previous user marker if any
+        if (userMarker) map.removeLayer(userMarker);
+        userMarker = L.circleMarker(
+          [userLocation.lat, userLocation.lng],
+          { radius: 9, fillColor: '#4ade80', fillOpacity: 0.9, color: '#fff', weight: 2 }
+        ).addTo(map)
+         .bindPopup('<div class="stop-popup"><strong>You are here</strong></div>');
+
+        map.setView([userLocation.lat, userLocation.lng], 15);
+        updateNearestStops();
+        refreshPopups(); // Rebuild all bus popups to include ETA
+      },
+      (err) => {
+        btn.textContent = '⊙ My Location';
+        alert('Could not get location: ' + err.message);
+      }
+    );
+  }
+
+  /** Re-centers the map on the user without re-requesting location */
+  function zoomToMe() {
+    if (userLocation) map.setView([userLocation.lat, userLocation.lng], 15);
+  }
+
+  /**
+   * Finds the geographically nearest stop to the user for each active route.
+   * Results are stored in nearestStops and used in buildPopup() for ETA display.
+   *
+   * This is a simple linear scan — for routes with hundreds of stops it's
+   * still fast enough (< 1ms) that no optimization is needed.
+   */
+  function updateNearestStops() {
+    if (!userLocation) return;
+    for (const route of Object.keys(ROUTES)) {
+      if (!stopsData[route] || !stopsData[route].length) continue;
+      let minDist = Infinity;
+      let nearest = null;
+      for (const stop of stopsData[route]) {
+        const d = haversineKm(
+          userLocation.lat, userLocation.lng,
+          parseFloat(stop.lat), parseFloat(stop.lng)
+        );
+        if (d < minDist) { minDist = d; nearest = stop; }
+      }
+      nearestStops[route] = { stop: nearest, distKm: minDist };
+    }
+  }
+
+  /**
+   * Rebuilds and updates the content of all currently-open bus popups.
+   * Called after geolocation is granted so ETAs appear without
+   * requiring the user to close and reopen each popup.
+   */
+  function refreshPopups() {
+    for (const [id, m] of Object.entries(busMarkers)) {
+      if (m._busData) m.setPopupContent(buildPopup(m._busData, m._route, id));
+    }
+  }
+
+  // ── INITIALIZATION ───────────────────────────────────────
+  /**
+   * App entry point. Called once on page load.
+   *
+   * 1. Renders route badges
+   * 2. Fetches stop data for all routes in parallel (non-blocking)
+   * 3. Fetches initial bus positions (awaited — shows buses ASAP)
+   * 4. Starts the 15-second refresh interval
+   */
+  async function init() {
+    renderBadges();
+
+    // Fetch stops for base routes. These are needed for:
+    //   - The stop markers layer
+    //   - Finding the nearest stop to the user for ETA
+    // Fetched in parallel, non-blocking — map still loads if this fails.
+    for (const route of Object.keys(ROUTES)) {
+      fetchStops(route).then(stops => {
+        stopsData[route] = stops;
+        updateNearestStops(); // In case user location already granted
+        refreshPopups();      // Update any already-open popups
+      }).catch(e => console.warn(`Stops for route ${route} failed:`, e));
+    }
+
+    // Initial bus fetch — await so the map isn't empty on first load
+    await updateBuses();
+
+    // Start polling loop
+    setInterval(updateBuses, REFRESH_MS);
+  }
+
+  init();
+</script>
+</body>
+</html>
